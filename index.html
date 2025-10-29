@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown to Confluence Converter</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <!-- Mermaid.js for diagram rendering -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose'
+        });
+        window.mermaid = mermaid;
+    </script>
+    <!-- DOMPurify for sanitization -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📄 Markdown to Confluence Converter</h1>
+            <p class="subtitle">Convert markdown files with Mermaid diagrams to Confluence-ready format</p>
+        </header>
+
+        <div class="upload-section">
+            <label for="fileInput" class="file-label">
+                <span class="upload-icon">📁</span>
+                <span>Choose Markdown File</span>
+                <input type="file" id="fileInput" accept=".md,.markdown" />
+            </label>
+            <div id="fileName" class="file-name"></div>
+        </div>
+
+        <div class="action-buttons">
+            <button id="processBtn" class="btn btn-primary" disabled>
+                <span>🔄</span> Process & Save Files
+            </button>
+            <button id="renderBtn" class="btn btn-secondary" disabled style="display:none;">
+                <span>👁️</span> Preview Only
+            </button>
+            <button id="downloadAllBtn" class="btn btn-success" disabled>
+                <span>�</span> Download All Files
+            </button>
+            <button id="copyBtn" class="btn btn-secondary" disabled>
+                <span>�</span> Copy for Confluence
+            </button>
+        </div>
+        
+        <div id="filesList" class="files-list" style="display:none;">
+            <h3>📁 Generated Files</h3>
+            <div id="filesContent"></div>
+        </div>
+
+        <div class="preview-section">
+            <div class="preview-header">
+                <h2>Preview</h2>
+                <div class="preview-controls">
+                    <label>
+                        <input type="checkbox" id="showRawHtml" />
+                        Show Raw HTML
+                    </label>
+                </div>
+            </div>
+            <div id="preview" class="preview-content">
+                <div class="placeholder">
+                    <p>👆 Select a markdown file to get started</p>
+                </div>
+            </div>
+            <div id="rawHtml" class="raw-html" style="display: none;">
+                <pre><code id="rawHtmlContent"></code></pre>
+            </div>
+        </div>
+
+        <div id="notification" class="notification"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
