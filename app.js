@@ -3,7 +3,7 @@ let currentMarkdown = '';
 let currentFileName = '';
 let renderedHtml = '';
 let confluenceStorageFormat = '';
-let generatedFiles = []; // {name, blob, type, size}
+let generatedFiles = [];
 
 // DOM elements
 const fileInput = document.getElementById('fileInput');
@@ -29,9 +29,9 @@ marked.setOptions({
 
 // Wait for mermaid to be ready
 let mermaidReady = false;
-window.addEventListener('load', () => {
+globalThis.addEventListener('load', () => {
     setTimeout(() => {
-        if (window.mermaid) {
+        if (globalThis.mermaid) {
             mermaidReady = true;
             console.log('Mermaid is ready');
         } else {
@@ -48,32 +48,30 @@ copyBtn.addEventListener('click', copyForConfluence);
 showRawHtmlCheckbox.addEventListener('change', toggleRawHtml);
 
 // Handle file selection
-function handleFileSelect(event) {
+async function handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
     currentFileName = file.name.replace(/\.[^/.]+$/, '');
     fileName.textContent = `Selected: ${file.name}`;
     
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        currentMarkdown = e.target.result;
+    try {
+        currentMarkdown = await file.text();
         processBtn.disabled = false;
         copyBtn.disabled = true;
         downloadAllBtn.disabled = true;
         generatedFiles = [];
         filesList.style.display = 'none';
         showNotification('File loaded successfully!', 'success');
-    };
-    reader.onerror = function() {
+    } catch (error) {
         showNotification('Error reading file', 'error');
-    };
-    reader.readAsText(file);
+        console.error('File read error:', error);
+    }
 }
 
 // Main processing function
 async function processMarkdownAndSaveFiles() {
-    if (!currentMarkdown || !window.mermaid) {
+    if (!currentMarkdown || !globalThis.mermaid) {
         showNotification('Please wait for the app to fully load', 'error');
         return;
     }
@@ -86,12 +84,7 @@ async function processMarkdownAndSaveFiles() {
         
         // Extract mermaid blocks
         const mermaidBlocks = [];
-        let processedMarkdown = currentMarkdown.replace(/```mermaid\s*\r?\n([\s\S]*?)```/g, (match, code) => {
-            const index = mermaidBlocks.length;
-            mermaidBlocks.push(code.trim());
-            console.log(`Found mermaid block ${index}`);
-            return `\n\n<!-- MERMAID_DIAGRAM_${index} -->\n\n`;
-        });
+        const processedMarkdown = extractMermaidBlocks(currentMarkdown, mermaidBlocks);
 
         console.log(`Found ${mermaidBlocks.length} mermaid diagrams`);
 
@@ -107,7 +100,7 @@ async function processMarkdownAndSaveFiles() {
                 
                 // Render SVG for preview
                 const diagramId = `mermaid-${i}-${Date.now()}`;
-                const { svg } = await window.mermaid.render(diagramId, mermaidCode);
+                const { svg } = await globalThis.mermaid.render(diagramId, mermaidCode);
                 previewSvgs.push(svg);
                 
                 // Convert mermaid to draw.io XML
@@ -201,29 +194,25 @@ async function mermaidToDrawio(mermaidCode, index) {
     return drawioXml;
 }
 
-// Convert markdown to Confluence Storage Format
-async function markdownToConfluenceStorage(markdown, drawioXmls) {
-    let storage = '';
+// Extract mermaid blocks from markdown
+function extractMermaidBlocks(markdown, mermaidBlocks) {
+    return markdown.replaceAll(/```mermaid\s*\r?\n([\s\S]*?)```/g, (match, code) => {
+        const index = mermaidBlocks.length;
+        mermaidBlocks.push(code.trim());
+        console.log(`Found mermaid block ${index}`);
+        return `\n\n<!-- MERMAID_DIAGRAM_${index} -->\n\n`;
+    });
+}
+
+// Process diagram placeholders
+function processDiagramPlaceholder(line, drawioXmls) {
+    const diagramMatch = line.match(/<!-- MERMAID_DIAGRAM_(\d+) -->/);
+    if (!diagramMatch) return null;
     
-    // Parse markdown and convert to Confluence XHTML
-    const lines = markdown.split('\n');
-    let inCodeBlock = false;
-    let codeLanguage = '';
-    let codeContent = '';
-    let listLevel = 0;
-    let inList = false;
-    let listType = '';
+    const diagramIndex = Number.parseInt(diagramMatch[1], 10);
+    if (!drawioXmls[diagramIndex]) return '';
     
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        
-        // Check for diagram placeholder
-        const diagramMatch = line.match(/<!-- MERMAID_DIAGRAM_(\d+) -->/);
-        if (diagramMatch) {
-            const diagramIndex = parseInt(diagramMatch[1]);
-            if (drawioXmls[diagramIndex]) {
-                // Embed draw.io diagram in Confluence format
-                storage += `<ac:structured-macro ac:name="drawio" ac:schema-version="1">
+    return `<ac:structured-macro ac:name="drawio" ac:schema-version="1">
   <ac:parameter ac:name="diagramName">Diagram ${diagramIndex + 1}</ac:parameter>
   <ac:parameter ac:name="simpleViewer">false</ac:parameter>
   <ac:parameter ac:name="width"></ac:parameter>
@@ -231,159 +220,217 @@ async function markdownToConfluenceStorage(markdown, drawioXmls) {
   <ac:parameter ac:name="revision">1</ac:parameter>
   <ac:plain-text-body><![CDATA[${drawioXmls[diagramIndex]}]]></ac:plain-text-body>
 </ac:structured-macro>\n`;
-            }
+}
+
+// Process code blocks
+function processCodeBlock(line, state) {
+    if (!line.startsWith('```')) return null;
+    
+    if (state.inCodeBlock) {
+        const result = `<ac:structured-macro ac:name="code" ac:schema-version="1">
+  <ac:parameter ac:name="language">${state.codeLanguage || 'text'}</ac:parameter>
+  <ac:parameter ac:name="theme">midnight</ac:parameter>
+  <ac:parameter ac:name="linenumbers">true</ac:parameter>
+  <ac:plain-text-body><![CDATA[${state.codeContent.trim()}]]></ac:plain-text-body>
+</ac:structured-macro>\n`;
+        state.inCodeBlock = false;
+        state.codeContent = '';
+        state.codeLanguage = '';
+        return result;
+    }
+    
+    state.inCodeBlock = true;
+    state.codeLanguage = line.substring(3).trim() || 'text';
+    return '';
+}
+
+// Process headings
+function processHeading(line, state) {
+    if (!line.startsWith('#')) return null;
+    
+    if (state.inList) {
+        state.storage += `</${state.listType}>\n`;
+        state.inList = false;
+    }
+    const level = line.match(/^#+/)[0].length;
+    const text = line.substring(level).trim();
+    return `<h${level}>${convertInlineMarkdown(text)}</h${level}>\n`;
+}
+
+// Process lists
+function processList(line, state) {
+    const unorderedMatch = line.match(/^\s*[-*+]\s/);
+    const orderedMatch = line.match(/^\s*\d+\.\s/);
+    
+    if (unorderedMatch) {
+        const text = line.replace(/^\s*[-*+]\s/, '').trim();
+        return processListItem(text, 'ul', state);
+    }
+    
+    if (orderedMatch) {
+        const text = line.replace(/^\s*\d+\.\s/, '').trim();
+        return processListItem(text, 'ol', state);
+    }
+    
+    // Check if we should close the list
+    if (state.inList && line.trim() !== '' && !line.match(/^\s*[-*+\d]/)) {
+        const result = `</${state.listType}>\n`;
+        state.inList = false;
+        state.listType = '';
+        return result;
+    }
+    
+    return null;
+}
+
+// Process list item
+function processListItem(text, listType, state) {
+    let result = '';
+    
+    if (!state.inList || state.listType !== listType) {
+        if (state.inList) result += `</${state.listType}>\n`;
+        result += `<${listType}>\n`;
+        state.inList = true;
+        state.listType = listType;
+    }
+    
+    result += `<li>${convertInlineMarkdown(text)}</li>\n`;
+    return result;
+}
+
+// Process tables
+function processTable(line, lines, i, state) {
+    if (!line.includes('|') || !line.trim().startsWith('|')) return null;
+    
+    const cells = line.split('|').filter(c => c.trim() !== '');
+    
+    if (line.includes('---')) return '';
+    
+    let result = '';
+    if (!state.storage.endsWith('<table><tbody>\n') && 
+        (!state.storage.includes('<table>') || 
+         state.storage.lastIndexOf('</table>') > state.storage.lastIndexOf('<table>'))) {
+        result += '<table><tbody>\n';
+    }
+    
+    result += '<tr>\n';
+    for (const cell of cells) {
+        result += `<td>${convertInlineMarkdown(cell.trim())}</td>\n`;
+    }
+    result += '</tr>\n';
+    
+    const nextLine = lines[i + 1];
+    if (!nextLine?.includes('|') || !nextLine.trim().startsWith('|')) {
+        result += '</tbody></table>\n';
+    }
+    
+    return result;
+}
+
+// Convert markdown to Confluence Storage Format
+async function markdownToConfluenceStorage(markdown, drawioXmls) {
+    const state = {
+        storage: '',
+        inCodeBlock: false,
+        codeLanguage: '',
+        codeContent: '',
+        inList: false,
+        listType: ''
+    };
+    
+    const lines = markdown.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Check for diagram placeholder
+        const diagramResult = processDiagramPlaceholder(line, drawioXmls);
+        if (diagramResult !== null) {
+            state.storage += diagramResult;
             continue;
         }
         
         // Handle code blocks
-        if (line.startsWith('```')) {
-            if (inCodeBlock) {
-                // End code block
-                storage += `<ac:structured-macro ac:name="code" ac:schema-version="1">
-  <ac:parameter ac:name="language">${codeLanguage || 'text'}</ac:parameter>
-  <ac:parameter ac:name="theme">midnight</ac:parameter>
-  <ac:parameter ac:name="linenumbers">true</ac:parameter>
-  <ac:plain-text-body><![CDATA[${codeContent.trim()}]]></ac:plain-text-body>
-</ac:structured-macro>\n`;
-                inCodeBlock = false;
-                codeContent = '';
-                codeLanguage = '';
-            } else {
-                // Start code block
-                inCodeBlock = true;
-                codeLanguage = line.substring(3).trim() || 'text';
-            }
+        const codeResult = processCodeBlock(line, state);
+        if (codeResult !== null) {
+            state.storage += codeResult;
             continue;
         }
         
-        if (inCodeBlock) {
-            codeContent += line + '\n';
+        if (state.inCodeBlock) {
+            state.codeContent += line + '\n';
             continue;
         }
         
         // Handle headings
-        if (line.startsWith('#')) {
-            if (inList) {
-                storage += `</${listType}>\n`;
-                inList = false;
-            }
-            const level = line.match(/^#+/)[0].length;
-            const text = line.substring(level).trim();
-            storage += `<h${level}>${convertInlineMarkdown(text)}</h${level}>\n`;
+        const headingResult = processHeading(line, state);
+        if (headingResult) {
+            state.storage += headingResult;
             continue;
         }
         
-        // Handle unordered lists
-        if (line.match(/^[\s]*[-*+]\s/)) {
-            const text = line.replace(/^[\s]*[-*+]\s/, '').trim();
-            
-            if (!inList || listType !== 'ul') {
-                if (inList) storage += `</${listType}>\n`;
-                storage += '<ul>\n';
-                inList = true;
-                listType = 'ul';
-            }
-            
-            storage += `<li>${convertInlineMarkdown(text)}</li>\n`;
-            continue;
+        // Handle lists
+        const listResult = processList(line, state);
+        if (listResult !== null) {
+            state.storage += listResult;
+            if (!listResult?.includes('<li>')) continue;
         }
-        
-        // Handle ordered lists
-        if (line.match(/^[\s]*\d+\.\s/)) {
-            const text = line.replace(/^[\s]*\d+\.\s/, '').trim();
-            
-            if (!inList || listType !== 'ol') {
-                if (inList) storage += `</${listType}>\n`;
-                storage += '<ol>\n';
-                inList = true;
-                listType = 'ol';
-            }
-            
-            storage += `<li>${convertInlineMarkdown(text)}</li>\n`;
-            continue;
-        }
-        
-        // Close list if we're in one and hit non-list content
-        if (inList && line.trim() !== '' && !line.match(/^[\s]*[-*+\d]/)) {
-            storage += `</${listType}>\n`;
-            inList = false;
-            listType = '';
-        }
+        if (listResult) continue;
         
         // Handle blockquotes
         if (line.startsWith('>')) {
             const text = line.substring(1).trim();
-            storage += `<blockquote><p>${convertInlineMarkdown(text)}</p></blockquote>\n`;
+            state.storage += `<blockquote><p>${convertInlineMarkdown(text)}</p></blockquote>\n`;
             continue;
         }
         
         // Handle horizontal rules
         if (line.match(/^[-*_]{3,}$/)) {
-            storage += '<hr/>\n';
+            state.storage += '<hr/>\n';
             continue;
         }
         
         // Handle tables
-        if (line.includes('|') && line.trim().startsWith('|')) {
-            const cells = line.split('|').filter(c => c.trim() !== '');
-            
-            // Skip separator lines
-            if (line.includes('---')) {
-                continue;
-            }
-            
-            // Start table if needed
-            if (!storage.endsWith('<table><tbody>\n') && (!storage.includes('<table>') || storage.lastIndexOf('</table>') > storage.lastIndexOf('<table>'))) {
-                storage += '<table><tbody>\n';
-            }
-            
-            storage += '<tr>\n';
-            cells.forEach(cell => {
-                storage += `<td>${convertInlineMarkdown(cell.trim())}</td>\n`;
-            });
-            storage += '</tr>\n';
-            
-            // Check if next line is not a table
-            if (i + 1 >= lines.length || !lines[i + 1].includes('|') || !lines[i + 1].trim().startsWith('|')) {
-                storage += '</tbody></table>\n';
-            }
+        const tableResult = processTable(line, lines, i, state);
+        if (tableResult !== null) {
+            state.storage += tableResult;
             continue;
         }
         
         // Handle paragraphs
         if (line.trim() !== '') {
-            storage += `<p>${convertInlineMarkdown(line)}</p>\n`;
+            state.storage += `<p>${convertInlineMarkdown(line)}</p>\n`;
         }
     }
     
     // Close any open lists
-    if (inList) {
-        storage += `</${listType}>\n`;
+    if (state.inList) {
+        state.storage += `</${state.listType}>\n`;
     }
     
-    return storage;
+    return state.storage;
 }
 
 // Convert inline markdown (bold, italic, code, links)
 function convertInlineMarkdown(text) {
     // Escape XML first
-    text = escapeXml(text);
+    let result = escapeXml(text);
     
     // Bold
-    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    result = result.replaceAll(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    result = result.replaceAll(/__(.+?)__/g, '<strong>$1</strong>');
     
     // Italic  
-    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    text = text.replace(/_(.+?)_/g, '<em>$1</em>');
+    result = result.replaceAll(/\*(.+?)\*/g, '<em>$1</em>');
+    result = result.replaceAll(/_(.+?)_/g, '<em>$1</em>');
     
     // Inline code
-    text = text.replace(/`(.+?)`/g, '<code>$1</code>');
+    result = result.replaceAll(/`(.+?)`/g, '<code>$1</code>');
     
     // Links
-    text = text.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>');
+    result = result.replaceAll(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>');
     
-    return text;
+    return result;
 }
 
 // Apply Confluence-friendly inline styles
@@ -392,7 +439,7 @@ function applyConfluenceStyles(htmlContent) {
     tempDiv.innerHTML = htmlContent;
     
     // Style code blocks (pre > code)
-    tempDiv.querySelectorAll('pre').forEach(pre => {
+    for (const pre of tempDiv.querySelectorAll('pre')) {
         pre.style.backgroundColor = '#1e1e1e';
         pre.style.color = '#d4d4d4';
         pre.style.padding = '16px';
@@ -404,17 +451,16 @@ function applyConfluenceStyles(htmlContent) {
         pre.style.fontSize = '14px';
         pre.style.lineHeight = '1.5';
         
-        // Style code inside pre
         const codeElement = pre.querySelector('code');
         if (codeElement) {
             codeElement.style.backgroundColor = 'transparent';
             codeElement.style.color = '#d4d4d4';
             codeElement.style.padding = '0';
         }
-    });
+    }
     
     // Style inline code (not in pre)
-    tempDiv.querySelectorAll('code').forEach(code => {
+    for (const code of tempDiv.querySelectorAll('code')) {
         if (!code.closest('pre')) {
             code.style.backgroundColor = '#f4f4f4';
             code.style.color = '#e01e5a';
@@ -424,77 +470,84 @@ function applyConfluenceStyles(htmlContent) {
             code.style.fontSize = '90%';
             code.style.border = '1px solid #e0e0e0';
         }
-    });
+    }
     
     // Style headings
-    tempDiv.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(heading => {
+    for (const heading of tempDiv.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
         heading.style.marginTop = '24px';
         heading.style.marginBottom = '16px';
         heading.style.fontWeight = '600';
         heading.style.color = '#172B4D';
-    });
+    }
     
-    tempDiv.querySelectorAll('h1').forEach(h1 => {
+    for (const h1 of tempDiv.querySelectorAll('h1')) {
         h1.style.fontSize = '2em';
         h1.style.borderBottom = '2px solid #ddd';
         h1.style.paddingBottom = '8px';
-    });
+    }
     
     // Style paragraphs
-    tempDiv.querySelectorAll('p').forEach(p => {
+    for (const p of tempDiv.querySelectorAll('p')) {
         p.style.marginBottom = '16px';
         p.style.lineHeight = '1.6';
-    });
+    }
     
     // Style lists
-    tempDiv.querySelectorAll('ul, ol').forEach(list => {
+    for (const list of tempDiv.querySelectorAll('ul, ol')) {
         list.style.marginBottom = '16px';
         list.style.paddingLeft = '30px';
-    });
+    }
     
-    tempDiv.querySelectorAll('li').forEach(li => {
+    for (const li of tempDiv.querySelectorAll('li')) {
         li.style.marginBottom = '8px';
-    });
+    }
     
     // Style tables
-    tempDiv.querySelectorAll('table').forEach(table => {
+    for (const table of tempDiv.querySelectorAll('table')) {
         table.style.borderCollapse = 'collapse';
         table.style.width = '100%';
         table.style.marginBottom = '20px';
         table.style.border = '1px solid #ddd';
-    });
+    }
     
-    tempDiv.querySelectorAll('th, td').forEach(cell => {
+    for (const cell of tempDiv.querySelectorAll('th, td')) {
         cell.style.border = '1px solid #ddd';
         cell.style.padding = '12px';
         cell.style.textAlign = 'left';
-    });
+    }
     
-    tempDiv.querySelectorAll('th').forEach(th => {
+    for (const th of tempDiv.querySelectorAll('th')) {
         th.style.backgroundColor = '#f0f0f0';
         th.style.fontWeight = 'bold';
-    });
+    }
     
     // Style blockquotes
-    tempDiv.querySelectorAll('blockquote').forEach(bq => {
+    for (const bq of tempDiv.querySelectorAll('blockquote')) {
         bq.style.borderLeft = '4px solid #0052CC';
         bq.style.paddingLeft = '16px';
         bq.style.margin = '16px 0';
         bq.style.color = '#666';
         bq.style.fontStyle = 'italic';
-    });
+    }
     
     return tempDiv.innerHTML;
+}
+
+// Get file icon based on type
+function getFileIcon(fileType) {
+    if (fileType === 'drawio') return '📊';
+    if (fileType === 'confluence') return '📄';
+    return '📝';
 }
 
 // Display files list
 function displayFiles() {
     filesContent.innerHTML = '';
-    generatedFiles.forEach(file => {
+    for (const file of generatedFiles) {
         const item = document.createElement('div');
         item.className = 'file-item';
         
-        const icon = file.type === 'drawio' ? '�' : file.type === 'confluence' ? '📄' : '📝';
+        const icon = getFileIcon(file.type);
         const size = (file.size / 1024).toFixed(2);
         
         item.innerHTML = `
@@ -508,7 +561,7 @@ function displayFiles() {
             </div>
         `;
         filesContent.appendChild(item);
-    });
+    }
     filesList.style.display = 'block';
 }
 
@@ -584,15 +637,3 @@ function stripHtml(html) {
 
 // Initialize
 console.log('Markdown to Confluence Converter initialized');
-// Copy for Confluence
-async function copyForConfluence() {
-    if (!confluenceStorageFormat) return;
-    
-    try {
-        await navigator.clipboard.writeText(confluenceStorageFormat);
-        showNotification('✓ Copied Confluence Storage Format! Paste into Confluence editor.', 'success');
-    } catch (error) {
-        console.error('Copy error:', error);
-        showNotification('❌ Failed to copy. Try downloading the XML file instead.', 'error');
-    }
-}
