@@ -327,6 +327,88 @@ function processTable(line, lines, i, state) {
     return result;
 }
 
+// Process blockquote
+function processBlockquote(line) {
+    if (!line.startsWith('>')) return null;
+    const text = line.substring(1).trim();
+    return `<blockquote><p>${convertInlineMarkdown(text)}</p></blockquote>\n`;
+}
+
+// Process horizontal rule
+function processHorizontalRule(line) {
+    if (!line.match(/^[-*_]{3,}$/)) return null;
+    return '<hr/>\n';
+}
+
+// Process paragraph
+function processParagraph(line) {
+    if (line.trim() === '') return null;
+    return `<p>${convertInlineMarkdown(line)}</p>\n`;
+}
+
+// Process a single line in markdown conversion
+function processMarkdownLine(line, lines, i, state, drawioXmls) {
+    // Check for diagram placeholder
+    const diagramResult = processDiagramPlaceholder(line, drawioXmls);
+    if (diagramResult !== null) {
+        state.storage += diagramResult;
+        return;
+    }
+    
+    // Handle code blocks
+    const codeResult = processCodeBlock(line, state);
+    if (codeResult !== null) {
+        state.storage += codeResult;
+        return;
+    }
+    
+    if (state.inCodeBlock) {
+        state.codeContent += line + '\n';
+        return;
+    }
+    
+    // Handle headings
+    const headingResult = processHeading(line, state);
+    if (headingResult) {
+        state.storage += headingResult;
+        return;
+    }
+    
+    // Handle lists
+    const listResult = processList(line, state);
+    if (listResult !== null) {
+        state.storage += listResult;
+        return;
+    }
+    
+    // Handle blockquotes
+    const blockquoteResult = processBlockquote(line);
+    if (blockquoteResult) {
+        state.storage += blockquoteResult;
+        return;
+    }
+    
+    // Handle horizontal rules
+    const hrResult = processHorizontalRule(line);
+    if (hrResult) {
+        state.storage += hrResult;
+        return;
+    }
+    
+    // Handle tables
+    const tableResult = processTable(line, lines, i, state);
+    if (tableResult !== null) {
+        state.storage += tableResult;
+        return;
+    }
+    
+    // Handle paragraphs
+    const paragraphResult = processParagraph(line);
+    if (paragraphResult) {
+        state.storage += paragraphResult;
+    }
+}
+
 // Convert markdown to Confluence Storage Format
 async function markdownToConfluenceStorage(markdown, drawioXmls) {
     const state = {
@@ -341,66 +423,7 @@ async function markdownToConfluenceStorage(markdown, drawioXmls) {
     const lines = markdown.split('\n');
     
     for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        
-        // Check for diagram placeholder
-        const diagramResult = processDiagramPlaceholder(line, drawioXmls);
-        if (diagramResult !== null) {
-            state.storage += diagramResult;
-            continue;
-        }
-        
-        // Handle code blocks
-        const codeResult = processCodeBlock(line, state);
-        if (codeResult !== null) {
-            state.storage += codeResult;
-            continue;
-        }
-        
-        if (state.inCodeBlock) {
-            state.codeContent += line + '\n';
-            continue;
-        }
-        
-        // Handle headings
-        const headingResult = processHeading(line, state);
-        if (headingResult) {
-            state.storage += headingResult;
-            continue;
-        }
-        
-        // Handle lists
-        const listResult = processList(line, state);
-        if (listResult !== null) {
-            state.storage += listResult;
-            if (!listResult?.includes('<li>')) continue;
-        }
-        if (listResult) continue;
-        
-        // Handle blockquotes
-        if (line.startsWith('>')) {
-            const text = line.substring(1).trim();
-            state.storage += `<blockquote><p>${convertInlineMarkdown(text)}</p></blockquote>\n`;
-            continue;
-        }
-        
-        // Handle horizontal rules
-        if (line.match(/^[-*_]{3,}$/)) {
-            state.storage += '<hr/>\n';
-            continue;
-        }
-        
-        // Handle tables
-        const tableResult = processTable(line, lines, i, state);
-        if (tableResult !== null) {
-            state.storage += tableResult;
-            continue;
-        }
-        
-        // Handle paragraphs
-        if (line.trim() !== '') {
-            state.storage += `<p>${convertInlineMarkdown(line)}</p>\n`;
-        }
+        processMarkdownLine(lines[i], lines, i, state, drawioXmls);
     }
     
     // Close any open lists
