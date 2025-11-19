@@ -1,31 +1,29 @@
 # 📄 Markdown to Confluence Converter
 
-A web-based appli4. **Download Files**
-   - Click "💾 Download" next to each file to download individually
-   - Click "📦 Download All Files" to download all generated files
-   - PNG files can be uploaded to Confluence as attachments or embedded inline
-   - The HTML file can be opened and content copied to Confluencen that converts markdown files with Mermaid diagrams into PNG images and provides Confluence-ready output.
+A web-based application that converts markdown files with Mermaid diagrams into Confluence-ready format and **pushes them directly to Confluence** via API.
 
 ## 🎯 What It Does
 
 This tool processes your markdown files and:
 1. **Extracts** all Mermaid diagram code blocks
-2. **Converts** each diagram to a high-quality PNG image file
-3. **Creates** a modified markdown file with image references
-4. **Generates** a standalone HTML file ready for Confluence
-5. **Lets you download** all files individually or together
+2. **Converts** each diagram to draw.io format (compatible with Confluence)
+3. **Converts** markdown to Confluence Storage Format
+4. **Pushes directly** to Confluence via REST API (creates or updates pages)
+5. **Uploads diagrams** as draw.io attachments automatically
+6. **Alternative**: Download files for manual upload
 
-Perfect for documentation teams who use Confluence and want to include diagrams created with Mermaid!
+Perfect for documentation teams who use Confluence and want to automate their documentation workflow!
 
 ## ✨ Features
 
 - 📝 **Markdown Parsing**: Full support for GitHub-flavored markdown
-- 🎨 **Mermaid Diagrams**: Automatically converts Mermaid diagrams to PNG images
+- 🎨 **Mermaid Diagrams**: Automatically converts Mermaid diagrams to draw.io format
 - 👁️ **Live Preview**: See your rendered markdown in real-time
-- 📋 **Confluence Copy**: One-click copy in Confluence-compatible format
+- � **Direct Push to Confluence**: Upload content and diagrams directly to Confluence via API
+- �📋 **Confluence Copy**: One-click copy in Confluence-compatible format
 - 🔍 **Raw HTML View**: Toggle to see the generated HTML code
 - 🎯 **Clean Interface**: Modern, responsive design with intuitive controls
-- 🖼️ **PNG Format**: Uses PNG instead of SVG for maximum Confluence compatibility (see WHY_PNG.md)
+- � **Save Configuration**: Store your Confluence settings for repeated use
 
 ## 🚀 Getting Started
 
@@ -36,41 +34,54 @@ Perfect for documentation teams who use Confluence and want to include diagrams 
 
 ### Quick Start
 
-See `QUICK_START.md` for a step-by-step guide, or:
+**For Direct Push to Confluence:**
+1. See `CONFLUENCE_SETUP.md` for OAuth 2.0 setup (one-time setup)
+2. Open `index.html` in your browser
+3. Configure OAuth credentials and authorize
+4. Select a markdown file (try `test.md`)
+5. Click "Process & Save Files"
+6. Click "Push to Confluence" - Done! ✅
 
+**For Manual Upload:**
 1. Open `index.html` in your browser
 2. Select a markdown file (try `test.md`)
 3. Click "Process & Save Files"
 4. Download the generated files
-5. Use the HTML file or copy directly to Confluence
+5. Upload to Confluence manually
 
 ### Usage
 
 1. **Open the Application**
    - Simply open `index.html` in your web browser
 
-2. **Load a Markdown File**
+2. **Configure Confluence OAuth (First Time Only)**
+   - Register an OAuth app in Atlassian Developer Console
+   - Fill in the Confluence Configuration section:
+     - Confluence URL (e.g., `https://your-domain.atlassian.net`)
+     - OAuth Client ID and Secret
+     - Space Key (e.g., `DEV`)
+   - Click "💾 Save Config" to remember these settings
+   - Click "🔐 Authorize with Confluence" to connect
+   - See `CONFLUENCE_SETUP.md` for detailed setup instructions
+
+3. **Load a Markdown File**
    - Click the "Choose Markdown File" button
    - Select a `.md` or `.markdown` file from your computer
 
-3. **Process and Generate Files**
+4. **Process and Push**
    - Click "🔄 Process & Save Files" to convert your markdown
-   - Mermaid diagrams will be extracted and saved as individual PNG files
-   - The application generates:
-     - Individual PNG files for each diagram (diagram-1.png, diagram-2.png, etc.)
-     - A modified markdown file with image references instead of mermaid code
-     - A standalone HTML file for Confluence
+   - Mermaid diagrams will be converted to draw.io format
+   - Click "🚀 Push to Confluence" to upload directly to Confluence
+   - The app will create or update the page and upload all diagrams
 
-4. **Download Files**
-   - Click "� Download" next to each file to download individually
-   - Click "📦 Download All Files" to download all generated files
-   - SVG files can be uploaded to Confluence as attachments
-   - The HTML file can be opened and content copied to Confluence
+5. **Alternative: Download Files**
+   - Click "� Download All Files" to download generated files
+   - Files include draw.io diagrams and Confluence XML
+   - Upload manually to Confluence if needed
 
-5. **Copy for Confluence**
-   - Click "� Copy for Confluence" to copy the rendered content
+6. **Copy for Confluence**
+   - Click "📋 Copy for Confluence" to copy the rendered content
    - Paste directly into Confluence (use Ctrl+V or Cmd+V)
-   - For best results, open the generated HTML file and copy from there
 
 ## 📖 Supported Markdown Features
 

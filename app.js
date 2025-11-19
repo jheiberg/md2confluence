@@ -4,6 +4,18 @@ let currentFileName = '';
 let renderedHtml = '';
 let confluenceStorageFormat = '';
 let generatedFiles = [];
+let confluenceConfig = {
+    url: '',
+    clientId: '',
+    clientSecret: '',
+    cloudId: '',
+    spaceKey: '',
+    pageTitle: '',
+    parentPageId: '',
+    accessToken: '',
+    refreshToken: '',
+    tokenExpiry: null
+};
 
 // DOM elements
 const fileInput = document.getElementById('fileInput');
@@ -11,6 +23,7 @@ const fileName = document.getElementById('fileName');
 const processBtn = document.getElementById('processBtn');
 const downloadAllBtn = document.getElementById('downloadAllBtn');
 const copyBtn = document.getElementById('copyBtn');
+const pushToConfluenceBtn = document.getElementById('pushToConfluenceBtn');
 const preview = document.getElementById('preview');
 const rawHtmlSection = document.getElementById('rawHtml');
 const rawHtmlContent = document.getElementById('rawHtmlContent');
@@ -18,6 +31,20 @@ const showRawHtmlCheckbox = document.getElementById('showRawHtml');
 const notification = document.getElementById('notification');
 const filesList = document.getElementById('filesList');
 const filesContent = document.getElementById('filesContent');
+
+// Confluence config elements
+const confluenceUrlInput = document.getElementById('confluenceUrl');
+const clientIdInput = document.getElementById('clientId');
+const clientSecretInput = document.getElementById('clientSecret');
+const cloudIdInput = document.getElementById('cloudId');
+const spaceKeyInput = document.getElementById('spaceKey');
+const pageTitleInput = document.getElementById('pageTitle');
+const parentPageIdInput = document.getElementById('parentPageId');
+const oauthStatusDisplay = document.getElementById('oauthStatus');
+const authorizeBtn = document.getElementById('authorizeBtn');
+const disconnectBtn = document.getElementById('disconnectBtn');
+const saveConfigBtn = document.getElementById('saveConfigBtn');
+const loadConfigBtn = document.getElementById('loadConfigBtn');
 
 // Configure marked
 marked.setOptions({
@@ -45,7 +72,18 @@ fileInput.addEventListener('change', handleFileSelect);
 processBtn.addEventListener('click', processMarkdownAndSaveFiles);
 downloadAllBtn.addEventListener('click', downloadAllFiles);
 copyBtn.addEventListener('click', copyForConfluence);
+pushToConfluenceBtn.addEventListener('click', pushToConfluence);
 showRawHtmlCheckbox.addEventListener('change', toggleRawHtml);
+saveConfigBtn.addEventListener('click', saveConfluenceConfig);
+loadConfigBtn.addEventListener('click', loadConfluenceConfig);
+authorizeBtn.addEventListener('click', startOAuthFlow);
+disconnectBtn.addEventListener('click', disconnectOAuth);
+
+// Load saved config on startup
+loadConfluenceConfigFromStorage();
+
+// Check for OAuth callback
+handleOAuthCallback();
 
 // Handle file selection
 async function handleFileSelect(event) {
@@ -60,6 +98,7 @@ async function handleFileSelect(event) {
         processBtn.disabled = false;
         copyBtn.disabled = true;
         downloadAllBtn.disabled = true;
+        pushToConfluenceBtn.disabled = true;
         generatedFiles = [];
         filesList.style.display = 'none';
         showNotification('File loaded successfully!', 'success');
@@ -156,6 +195,7 @@ async function processMarkdownAndSaveFiles() {
         // Enable buttons
         copyBtn.disabled = false;
         downloadAllBtn.disabled = false;
+        pushToConfluenceBtn.disabled = false;
         
         showNotification(`✓ Generated ${generatedFiles.length} files!`, 'success');
         console.log('Processing complete!');
@@ -656,6 +696,571 @@ function stripHtml(html) {
     const tmp = document.createElement('div');
     tmp.innerHTML = html;
     return tmp.textContent || tmp.innerText || '';
+}
+
+// OAuth 2.0 Configuration
+const OAUTH_CONFIG = {
+    authorizationUrl: 'https://auth.atlassian.com/authorize',
+    tokenUrl: 'https://auth.atlassian.com/oauth/token',
+    accessibleResourcesUrl: 'https://api.atlassian.com/oauth/token/accessible-resources',
+    scopes: [
+        'read:confluence-content.all',
+        'write:confluence-content',
+        'read:confluence-space.summary',
+        'read:confluence-props',
+        'write:confluence-file'
+    ]
+};
+
+// Confluence Configuration Management
+function saveConfluenceConfig() {
+    confluenceConfig.url = confluenceUrlInput.value.trim();
+    confluenceConfig.clientId = clientIdInput.value.trim();
+    confluenceConfig.clientSecret = clientSecretInput.value.trim();
+    confluenceConfig.cloudId = cloudIdInput.value.trim();
+    confluenceConfig.spaceKey = spaceKeyInput.value.trim();
+    confluenceConfig.pageTitle = pageTitleInput.value.trim();
+    confluenceConfig.parentPageId = parentPageIdInput.value.trim();
+    
+    try {
+        // Don't save tokens in regular config - they're saved separately
+        const configToSave = {
+            url: confluenceConfig.url,
+            clientId: confluenceConfig.clientId,
+            clientSecret: confluenceConfig.clientSecret,
+            cloudId: confluenceConfig.cloudId,
+            spaceKey: confluenceConfig.spaceKey,
+            pageTitle: confluenceConfig.pageTitle,
+            parentPageId: confluenceConfig.parentPageId
+        };
+        localStorage.setItem('confluenceConfig', JSON.stringify(configToSave));
+        showNotification('✓ Configuration saved!', 'success');
+    } catch (error) {
+        console.error('Failed to save config:', error);
+        showNotification('❌ Failed to save configuration', 'error');
+    }
+}
+
+function loadConfluenceConfig() {
+    try {
+        const saved = localStorage.getItem('confluenceConfig');
+        if (saved) {
+            const config = JSON.parse(saved);
+            confluenceUrlInput.value = config.url || '';
+            clientIdInput.value = config.clientId || '';
+            clientSecretInput.value = config.clientSecret || '';
+            cloudIdInput.value = config.cloudId || '';
+            spaceKeyInput.value = config.spaceKey || '';
+            pageTitleInput.value = config.pageTitle || '';
+            parentPageIdInput.value = config.parentPageId || '';
+            
+            // Merge with current config
+            Object.assign(confluenceConfig, config);
+            
+            showNotification('✓ Configuration loaded!', 'success');
+        } else {
+            showNotification('No saved configuration found', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to load config:', error);
+        showNotification('❌ Failed to load configuration', 'error');
+    }
+}
+
+function loadConfluenceConfigFromStorage() {
+    try {
+        const saved = localStorage.getItem('confluenceConfig');
+        if (saved) {
+            const config = JSON.parse(saved);
+            confluenceUrlInput.value = config.url || '';
+            clientIdInput.value = config.clientId || '';
+            clientSecretInput.value = config.clientSecret || '';
+            cloudIdInput.value = config.cloudId || '';
+            spaceKeyInput.value = config.spaceKey || '';
+            pageTitleInput.value = config.pageTitle || '';
+            parentPageIdInput.value = config.parentPageId || '';
+            
+            Object.assign(confluenceConfig, config);
+        }
+        
+        // Load OAuth tokens separately
+        const tokens = localStorage.getItem('confluenceTokens');
+        if (tokens) {
+            const { accessToken, refreshToken, tokenExpiry, cloudId } = JSON.parse(tokens);
+            confluenceConfig.accessToken = accessToken;
+            confluenceConfig.refreshToken = refreshToken;
+            confluenceConfig.tokenExpiry = tokenExpiry;
+            if (cloudId) {
+                confluenceConfig.cloudId = cloudId;
+                cloudIdInput.value = cloudId;
+            }
+            updateOAuthStatus(true);
+        }
+    } catch (error) {
+        console.error('Failed to load config from storage:', error);
+    }
+}
+
+// OAuth 2.0 Flow
+function startOAuthFlow() {
+    const clientId = clientIdInput.value.trim();
+    
+    if (!clientId) {
+        showNotification('❌ Please enter OAuth Client ID', 'error');
+        return;
+    }
+    
+    // Generate state for CSRF protection
+    const state = generateRandomString(32);
+    localStorage.setItem('oauthState', state);
+    
+    // Save current config before redirect
+    saveConfluenceConfig();
+    
+    // Build authorization URL
+    const redirectUri = window.location.origin + window.location.pathname;
+    const params = new URLSearchParams({
+        audience: 'api.atlassian.com',
+        client_id: clientId,
+        scope: OAUTH_CONFIG.scopes.join(' '),
+        redirect_uri: redirectUri,
+        state: state,
+        response_type: 'code',
+        prompt: 'consent'
+    });
+    
+    const authUrl = `${OAUTH_CONFIG.authorizationUrl}?${params.toString()}`;
+    console.log('Redirecting to:', authUrl);
+    
+    // Redirect to Atlassian authorization
+    window.location.href = authUrl;
+}
+
+async function handleOAuthCallback() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+    const error = urlParams.get('error');
+    
+    if (error) {
+        showNotification(`❌ OAuth error: ${error}`, 'error');
+        cleanUrl();
+        return;
+    }
+    
+    if (!code) {
+        return; // Not an OAuth callback
+    }
+    
+    // Verify state
+    const savedState = localStorage.getItem('oauthState');
+    if (state !== savedState) {
+        showNotification('❌ Invalid OAuth state. Possible CSRF attack.', 'error');
+        cleanUrl();
+        return;
+    }
+    
+    localStorage.removeItem('oauthState');
+    
+    try {
+        showNotification('🔄 Exchanging authorization code...', 'success');
+        
+        // Exchange code for tokens
+        const clientId = clientIdInput.value.trim();
+        const clientSecret = clientSecretInput.value.trim();
+        
+        if (!clientId || !clientSecret) {
+            showNotification('❌ Client ID and Secret required', 'error');
+            cleanUrl();
+            return;
+        }
+        
+        const redirectUri = window.location.origin + window.location.pathname;
+        
+        const tokenResponse = await fetch(OAUTH_CONFIG.tokenUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                grant_type: 'authorization_code',
+                client_id: clientId,
+                client_secret: clientSecret,
+                code: code,
+                redirect_uri: redirectUri
+            })
+        });
+        
+        if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+            console.error('Token exchange failed:', errorText);
+            throw new Error(`Token exchange failed: ${tokenResponse.status}`);
+        }
+        
+        const tokens = await tokenResponse.json();
+        
+        // Get accessible resources (Cloud ID)
+        const resourcesResponse = await fetch(OAUTH_CONFIG.accessibleResourcesUrl, {
+            headers: {
+                'Authorization': `Bearer ${tokens.access_token}`,
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!resourcesResponse.ok) {
+            throw new Error('Failed to get accessible resources');
+        }
+        
+        const resources = await resourcesResponse.json();
+        
+        if (resources.length === 0) {
+            throw new Error('No accessible Confluence sites found');
+        }
+        
+        // Use first accessible resource
+        const cloudId = resources[0].id;
+        const cloudUrl = resources[0].url;
+        
+        // Save tokens
+        const tokenExpiry = Date.now() + (tokens.expires_in * 1000);
+        confluenceConfig.accessToken = tokens.access_token;
+        confluenceConfig.refreshToken = tokens.refresh_token;
+        confluenceConfig.tokenExpiry = tokenExpiry;
+        confluenceConfig.cloudId = cloudId;
+        
+        localStorage.setItem('confluenceTokens', JSON.stringify({
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token,
+            tokenExpiry: tokenExpiry,
+            cloudId: cloudId
+        }));
+        
+        // Update UI
+        cloudIdInput.value = cloudId;
+        if (!confluenceUrlInput.value) {
+            confluenceUrlInput.value = cloudUrl;
+        }
+        
+        updateOAuthStatus(true);
+        showNotification('✅ Successfully authorized with Confluence!', 'success');
+        
+        // Save config with new cloud ID
+        saveConfluenceConfig();
+        
+    } catch (error) {
+        console.error('OAuth callback error:', error);
+        showNotification(`❌ OAuth failed: ${error.message}`, 'error');
+    }
+    
+    // Clean URL
+    cleanUrl();
+}
+
+function disconnectOAuth() {
+    confluenceConfig.accessToken = '';
+    confluenceConfig.refreshToken = '';
+    confluenceConfig.tokenExpiry = null;
+    localStorage.removeItem('confluenceTokens');
+    updateOAuthStatus(false);
+    showNotification('✓ Disconnected from Confluence', 'success');
+}
+
+function updateOAuthStatus(connected) {
+    if (connected) {
+        oauthStatusDisplay.textContent = '✓ Connected to Confluence';
+        oauthStatusDisplay.classList.add('connected');
+        authorizeBtn.style.display = 'none';
+        disconnectBtn.style.display = 'block';
+    } else {
+        oauthStatusDisplay.textContent = 'Not connected';
+        oauthStatusDisplay.classList.remove('connected');
+        authorizeBtn.style.display = 'block';
+        disconnectBtn.style.display = 'none';
+    }
+}
+
+async function refreshAccessToken() {
+    if (!confluenceConfig.refreshToken) {
+        throw new Error('No refresh token available');
+    }
+    
+    const clientId = confluenceConfig.clientId || clientIdInput.value.trim();
+    const clientSecret = confluenceConfig.clientSecret || clientSecretInput.value.trim();
+    
+    const response = await fetch(OAUTH_CONFIG.tokenUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            grant_type: 'refresh_token',
+            client_id: clientId,
+            client_secret: clientSecret,
+            refresh_token: confluenceConfig.refreshToken
+        })
+    });
+    
+    if (!response.ok) {
+        throw new Error('Failed to refresh token');
+    }
+    
+    const tokens = await response.json();
+    
+    const tokenExpiry = Date.now() + (tokens.expires_in * 1000);
+    confluenceConfig.accessToken = tokens.access_token;
+    confluenceConfig.refreshToken = tokens.refresh_token;
+    confluenceConfig.tokenExpiry = tokenExpiry;
+    
+    localStorage.setItem('confluenceTokens', JSON.stringify({
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        tokenExpiry: tokenExpiry,
+        cloudId: confluenceConfig.cloudId
+    }));
+    
+    return tokens.access_token;
+}
+
+// Helper functions
+function generateRandomString(length) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+}
+
+function cleanUrl() {
+    const url = new URL(window.location.href);
+    url.search = '';
+    window.history.replaceState({}, document.title, url.toString());
+}
+
+// Confluence API Client
+class ConfluenceAPI {
+    constructor(cloudId, accessToken) {
+        this.cloudId = cloudId;
+        this.accessToken = accessToken;
+        this.baseUrl = `https://api.atlassian.com/ex/confluence/${cloudId}`;
+    }
+
+    async makeRequest(endpoint, method = 'GET', body = null) {
+        // Check if token needs refresh
+        if (confluenceConfig.tokenExpiry && Date.now() > confluenceConfig.tokenExpiry - 60000) {
+            console.log('Token expiring soon, refreshing...');
+            this.accessToken = await refreshAccessToken();
+        }
+        
+        const headers = {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+
+        const options = {
+            method,
+            headers,
+            mode: 'cors'
+        };
+
+        if (body && (method === 'POST' || method === 'PUT')) {
+            options.body = JSON.stringify(body);
+        }
+
+        const url = `${this.baseUrl}${endpoint}`;
+        console.log(`Making ${method} request to:`, url);
+
+        const response = await fetch(url, options);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error:', errorText);
+            throw new Error(`Confluence API error: ${response.status} - ${response.statusText}`);
+        }
+
+        return response.json();
+    }
+
+    async searchPages(spaceKey, title) {
+        const cql = `space="${spaceKey}" AND title="${title}"`;
+        const endpoint = `/content/search?cql=${encodeURIComponent(cql)}`;
+        return this.makeRequest(endpoint);
+    }
+
+    async createPage(spaceKey, title, content, parentId = null) {
+        const body = {
+            type: 'page',
+            title: title,
+            space: { key: spaceKey },
+            body: {
+                storage: {
+                    value: content,
+                    representation: 'storage'
+                }
+            }
+        };
+
+        if (parentId) {
+            body.ancestors = [{ id: parentId }];
+        }
+
+        return this.makeRequest('/content', 'POST', body);
+    }
+
+    async updatePage(pageId, title, content, version) {
+        const body = {
+            version: { number: version + 1 },
+            title: title,
+            type: 'page',
+            body: {
+                storage: {
+                    value: content,
+                    representation: 'storage'
+                }
+            }
+        };
+
+        return this.makeRequest(`/content/${pageId}`, 'PUT', body);
+    }
+
+    async uploadAttachment(pageId, filename, blob) {
+        // Check if token needs refresh
+        if (confluenceConfig.tokenExpiry && Date.now() > confluenceConfig.tokenExpiry - 60000) {
+            console.log('Token expiring soon, refreshing...');
+            this.accessToken = await refreshAccessToken();
+        }
+        
+        const formData = new FormData();
+        formData.append('file', blob, filename);
+        formData.append('comment', 'Uploaded by Markdown to Confluence Converter');
+
+        const headers = {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'X-Atlassian-Token': 'no-check'
+        };
+
+        const url = `${this.baseUrl}/wiki/rest/api/content/${pageId}/child/attachment`;
+        console.log(`Uploading attachment to:`, url);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: formData,
+            mode: 'cors'
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Upload Error:', errorText);
+            throw new Error(`Failed to upload attachment: ${response.status} - ${response.statusText}`);
+        }
+
+        return response.json();
+    }
+
+    async deleteAttachment(attachmentId) {
+        return this.makeRequest(`/content/${attachmentId}`, 'DELETE');
+    }
+
+    async getAttachments(pageId) {
+        return this.makeRequest(`/content/${pageId}/child/attachment`);
+    }
+}
+
+// Push to Confluence function
+async function pushToConfluence() {
+    if (!confluenceStorageFormat) {
+        showNotification('❌ Please process the markdown first', 'error');
+        return;
+    }
+
+    // Get current config
+    const config = {
+        cloudId: confluenceConfig.cloudId || cloudIdInput.value.trim(),
+        spaceKey: spaceKeyInput.value.trim(),
+        pageTitle: pageTitleInput.value.trim() || currentFileName,
+        parentPageId: parentPageIdInput.value.trim(),
+        accessToken: confluenceConfig.accessToken
+    };
+
+    // Validate configuration
+    if (!config.accessToken) {
+        showNotification('❌ Please authorize with Confluence first', 'error');
+        return;
+    }
+    
+    if (!config.cloudId || !config.spaceKey || !config.pageTitle) {
+        showNotification('❌ Please fill in Cloud ID, Space Key, and Page Title', 'error');
+        return;
+    }
+
+    try {
+        pushToConfluenceBtn.disabled = true;
+        showNotification('🔄 Pushing to Confluence...', 'success');
+
+        const api = new ConfluenceAPI(config.cloudId, config.accessToken);
+
+        // Check if page exists
+        console.log('Searching for existing page...');
+        const searchResults = await api.searchPages(config.spaceKey, config.pageTitle);
+        
+        let pageId;
+        let pageVersion;
+
+        if (searchResults.results && searchResults.results.length > 0) {
+            // Update existing page
+            const existingPage = searchResults.results[0];
+            pageId = existingPage.id;
+            pageVersion = existingPage.version.number;
+            console.log(`Found existing page: ${pageId}, version ${pageVersion}`);
+            showNotification('📝 Updating existing page...', 'success');
+            
+            await api.updatePage(pageId, config.pageTitle, confluenceStorageFormat, pageVersion);
+            console.log('Page updated successfully');
+        } else {
+            // Create new page
+            console.log('Creating new page...');
+            showNotification('📝 Creating new page...', 'success');
+            
+            const newPage = await api.createPage(
+                config.spaceKey,
+                config.pageTitle,
+                confluenceStorageFormat,
+                config.parentPageId || null
+            );
+            pageId = newPage.id;
+            console.log(`Page created successfully: ${pageId}`);
+        }
+
+        // Upload draw.io attachments
+        const drawioFiles = generatedFiles.filter(f => f.type === 'drawio');
+        if (drawioFiles.length > 0) {
+            showNotification(`📤 Uploading ${drawioFiles.length} diagram(s)...`, 'success');
+            
+            for (const file of drawioFiles) {
+                console.log(`Uploading ${file.name}...`);
+                await api.uploadAttachment(pageId, file.name, file.blob);
+            }
+        }
+
+        const baseUrl = confluenceUrlInput.value.trim() || confluenceConfig.url;
+        const pageUrl = `${baseUrl}/wiki/spaces/${config.spaceKey}/pages/${pageId}`;
+        showNotification('✅ Successfully pushed to Confluence!', 'success');
+        
+        // Show link to the page
+        setTimeout(() => {
+            if (confirm('Content pushed successfully! Would you like to open the Confluence page?')) {
+                window.open(pageUrl, '_blank');
+            }
+        }, 1000);
+
+    } catch (error) {
+        console.error('Push to Confluence error:', error);
+        showNotification(`❌ Failed to push to Confluence: ${error.message}`, 'error');
+    } finally {
+        pushToConfluenceBtn.disabled = false;
+    }
 }
 
 // Initialize

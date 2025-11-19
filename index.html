@@ -36,6 +36,59 @@
             <div id="fileName" class="file-name"></div>
         </div>
 
+        <div class="confluence-config">
+            <h3>⚙️ Confluence Configuration</h3>
+            <div class="config-grid">
+                <div class="config-field">
+                    <label for="confluenceUrl">Confluence URL</label>
+                    <input type="text" id="confluenceUrl" placeholder="https://your-domain.atlassian.net" />
+                </div>
+                <div class="config-field">
+                    <label for="clientId">OAuth Client ID</label>
+                    <input type="text" id="clientId" placeholder="Your OAuth 2.0 Client ID" />
+                    <small><a href="https://developer.atlassian.com/console/myapps/" target="_blank">Register OAuth App</a></small>
+                </div>
+                <div class="config-field">
+                    <label for="clientSecret">OAuth Client Secret</label>
+                    <input type="password" id="clientSecret" placeholder="Your OAuth Client Secret" />
+                </div>
+                <div class="config-field">
+                    <label for="cloudId">Cloud ID (optional)</label>
+                    <input type="text" id="cloudId" placeholder="Auto-detected after OAuth" />
+                </div>
+                <div class="config-field">
+                    <label for="spaceKey">Space Key</label>
+                    <input type="text" id="spaceKey" placeholder="SPACE" />
+                </div>
+                <div class="config-field">
+                    <label for="pageTitle">Page Title</label>
+                    <input type="text" id="pageTitle" placeholder="My Documentation Page" />
+                </div>
+                <div class="config-field">
+                    <label for="parentPageId">Parent Page ID (optional)</label>
+                    <input type="text" id="parentPageId" placeholder="123456" />
+                </div>
+                <div class="config-field oauth-status">
+                    <label>OAuth Status</label>
+                    <div id="oauthStatus" class="status-display">Not connected</div>
+                    <button id="authorizeBtn" class="btn btn-primary btn-oauth">
+                        <span>🔐</span> Authorize with Confluence
+                    </button>
+                    <button id="disconnectBtn" class="btn btn-secondary btn-oauth" style="display:none;">
+                        <span>🔓</span> Disconnect
+                    </button>
+                </div>
+            </div>
+            <div class="config-actions">
+                <button id="saveConfigBtn" class="btn btn-secondary">
+                    <span>💾</span> Save Config
+                </button>
+                <button id="loadConfigBtn" class="btn btn-secondary">
+                    <span>📂</span> Load Config
+                </button>
+            </div>
+        </div>
+
         <div class="action-buttons">
             <button id="processBtn" class="btn btn-primary" disabled>
                 <span>🔄</span> Process & Save Files
@@ -43,11 +96,14 @@
             <button id="renderBtn" class="btn btn-secondary" disabled style="display:none;">
                 <span>👁️</span> Preview Only
             </button>
+            <button id="pushToConfluenceBtn" class="btn btn-success" disabled>
+                <span>🚀</span> Push to Confluence
+            </button>
             <button id="downloadAllBtn" class="btn btn-success" disabled>
-                <span>�</span> Download All Files
+                <span>💾</span> Download All Files
             </button>
             <button id="copyBtn" class="btn btn-secondary" disabled>
-                <span>�</span> Copy for Confluence
+                <span>📋</span> Copy for Confluence
             </button>
         </div>
         
